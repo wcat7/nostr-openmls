@@ -1,0 +1,32 @@
+[package]
+name = "openmls-nostr"
+authors = ["White Noise Authors"]
+version = "0.0.1"
+edition = "2021"
+description = "A library to help use OpenMLS with Nostr."
+license = "MIT"
+documentation = "https://docs.rs/openmls-nostr"
+repository = "https://github.com/erskingardner/openmls-nostr"
+homepage = "https://github.com/erskingardner/openmls-nostr"
+readme = "README.md"
+keywords = ["openmls", "nostr", "mls"]
+exclude = [".github/", "tests/", "Cargo.lock", ".gitignore"]
+
+[dependencies]
+openmls = { version = "0.6", git = "https://github.com/openmls/openmls", rev = "a7536aa" }
+openmls_basic_credential = { version = "0.3", git = "https://github.com/openmls/openmls", rev = "a7536aa" }
+openmls_rust_crypto = { version = "0.3", git = "https://github.com/openmls/openmls", rev = "a7536aa" }
+openmls_traits = { version = "0.3", git = "https://github.com/openmls/openmls", rev = "a7536aa" }
+openmls-sled-storage = { version = "0.0.1", git = "https://github.com/erskingardner/openmls-sled-storage", branch = "master" }
+serde = { version = "1", features = ["derive"] }
+bincode = "1.3"
+tls_codec = "0.4"
+hex = "0.4"
+rand = "0.8"
+thiserror = "1.0"
+p256 = "0.13"
+ed25519-dalek = "2.1"
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3.13"
