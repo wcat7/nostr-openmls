@@ -74,7 +74,6 @@ impl From<NostrCredential> for Credential {
     }
 }
 
-// Blocked https://openmls.zulipchat.com/#narrow/channel/262730-general/topic/Custom.20credential.20types.20not.20possible/near/479251540
 // impl TryFrom<Credential> for NostrCredential {
 //     type Error = NostrCredentialError;
 

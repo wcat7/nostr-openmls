@@ -5,22 +5,32 @@ use openmls::prelude::*;
 use openmls_rust_crypto::RustCrypto;
 use openmls_sled_storage::{SledStorage, SledStorageError};
 use std::path::PathBuf;
+use thiserror::Error;
 
+pub mod groups;
 pub mod key_packages;
-pub mod nostr_credential;
 pub mod nostr_group_data_extension;
+pub mod welcomes;
+// TODO: Re-enable this once we've worked out whether we really need it.
+// pub mod nostr_credential;
 
 #[cfg(test)]
 pub mod test_utils;
 
+#[derive(Debug, Error)]
+pub enum NostrMlsError {
+    #[error("Error updating provider for user: {0}")]
+    ProviderError(String),
+}
+
 /// The main struct for the Nostr MLS implementation.
 pub struct NostrMls {
-    // The ciphersuite to use
-    ciphersuite: Ciphersuite,
-    // The required extensions
-    extensions: Vec<ExtensionType>,
-    // An implementation of the OpenMls provider trait
-    provider: NostrMlsProvider,
+    /// The ciphersuite to use
+    pub ciphersuite: Ciphersuite,
+    /// The required extensions
+    pub extensions: Vec<ExtensionType>,
+    /// An implementation of the OpenMls provider trait
+    pub provider: NostrMlsProvider,
 }
 
 /// The provider struct for Nostr MLS that implements the OpenMLS Provider trait.
@@ -68,13 +78,12 @@ impl NostrMls {
         0xBABA, 0xCACA, 0xDADA, 0xEAEA,
     ];
 
-    pub fn new(storage_path: PathBuf, current_identity: Option<String>) -> Self {
-        // TODO: This is a bit messy and could be improved.
+    pub fn new(storage_path: PathBuf, active_identity: Option<String>) -> Self {
         // We want MLS data to be stored on a per user basis so we create a new path
         // and hence a new database instance for each user.
-        // However, if we don't have a current identity (which means we're not going to use MLS)
+        // However, if we don't have a active identity (which means we're not going to use MLS)
         // we can just use the default path (which creates an empty database).
-        let key_store = match current_identity.as_ref() {
+        let key_store = match active_identity.as_ref() {
             Some(identity) => SledStorage::new_from_path(format!(
                 "{}/{}/{}",
                 storage_path.to_string_lossy(),
@@ -101,48 +110,15 @@ impl NostrMls {
         }
     }
 
-    /// Updates the provider for a given user identity.
-    ///
-    /// This method updates the current identity and key store of the provider
-    /// based on the given user identity.
-    ///
-    /// # Arguments
-    ///
-    /// * `current_identity` - An `Option<String>` representing the current user's identity.
-    ///   If `None`, it indicates no active user.
-    ///
-    // pub fn update_provider_for_user(&self, current_identity: Option<String>) {
-    //     // First, flush (and block) until all pending writes are persisted to disk.
-    //     self.provider.key_store.flush().map_err(|e| NostrMls)
-    //         .key_store
-    //         .flush()
-    //         .expect("Failed to flush provider storage data");
-
-    //     provider.current_identity = current_identity.clone();
-
-    //     let key_store = match current_identity.clone() {
-    //         Some(identity) => SledStorage::new_from_path(format!(
-    //             "{}/{}/{}",
-    //             self.storage_path.to_string_lossy(),
-    //             "mls_storage",
-    //             identity
-    //         )),
-    //         None => SledStorage::new_from_path(format!(
-    //             "{}/{}",
-    //             self.storage_path.to_string_lossy(),
-    //             "mls_storage"
-    //         )),
-    //     }
-    //     .expect("Failed to create MLS storage with the right path");
-
-    //     provider.key_store = key_store;
-
-    //     tracing::debug!(
-    //         target: "nostr_mls::update_provider_for_user",
-    //         "Updated provider for user: {:?}",
-    //         current_identity.clone()
-    //     );
-    // }
+    pub fn default_capabilities(&self) -> Capabilities {
+        Capabilities::new(
+            None,
+            Some(&[self.ciphersuite]),
+            Some(Self::REQUIRED_EXTENSIONS),
+            None,
+            None,
+        )
+    }
 
     pub fn delete_data(&self) -> Result<(), SledStorageError> {
         tracing::debug!(target: "nostr_mls::delete_data", "Deleting all data from key store");
@@ -159,5 +135,39 @@ impl NostrMls {
             .map(|e| format!("{:?}", e))
             .collect::<Vec<String>>()
             .join(",")
+    }
+
+    pub fn create_group(
+        &self,
+        name: String,
+        description: String,
+        member_key_packages: Vec<KeyPackage>,
+        admin_pubkeys_hex: Vec<String>,
+        creator_pubkey_hex: String,
+        group_relays: Vec<String>,
+    ) -> Result<groups::CreateGroupResult, groups::GroupError> {
+        groups::create_mls_group(
+            self,
+            name,
+            description,
+            member_key_packages,
+            admin_pubkeys_hex,
+            creator_pubkey_hex,
+            group_relays,
+        )
+    }
+
+    pub fn preview_welcome_event(
+        &self,
+        welcome_message: Vec<u8>,
+    ) -> Result<welcomes::WelcomePreview, welcomes::WelcomeError> {
+        welcomes::preview_welcome_event(self, welcome_message)
+    }
+
+    pub fn join_group_from_welcome(
+        &self,
+        welcome_message: Vec<u8>,
+    ) -> Result<welcomes::JoinedGroupResult, welcomes::WelcomeError> {
+        welcomes::join_group_from_welcome(self, welcome_message)
     }
 }

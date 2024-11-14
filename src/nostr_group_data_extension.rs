@@ -36,11 +36,11 @@ pub enum NostrGroupDataExtensionError {
     TlsSize,
 )]
 pub struct NostrGroupDataExtension {
-    nostr_group_id: [u8; 32],
-    name: Vec<u8>,
-    description: Vec<u8>,
-    admin_identities: Vec<Vec<u8>>,
-    relays: Vec<Vec<u8>>,
+    pub nostr_group_id: [u8; 32],
+    pub name: Vec<u8>,
+    pub description: Vec<u8>,
+    pub admin_pubkeys: Vec<Vec<u8>>,
+    pub relays: Vec<Vec<u8>>,
 }
 
 impl NostrGroupDataExtension {
@@ -65,7 +65,7 @@ impl NostrGroupDataExtension {
     pub fn new(
         name: String,
         description: String,
-        admin_identities: Vec<String>,
+        admin_pubkeys_hex: Vec<String>,
         relays: Vec<String>,
     ) -> Self {
         // Generate a random 32-byte group ID
@@ -76,7 +76,7 @@ impl NostrGroupDataExtension {
             nostr_group_id: random_bytes,
             name: name.into_bytes(),
             description: description.into_bytes(),
-            admin_identities: admin_identities
+            admin_pubkeys: admin_pubkeys_hex
                 .into_iter()
                 .map(|identity| identity.into_bytes())
                 .collect(),
@@ -100,7 +100,7 @@ impl NostrGroupDataExtension {
         let group_data_extension = match group_context
             .extensions()
             .iter()
-            .find(|ext| ext.extension_type() == ExtensionType::Unknown(0xFF69))
+            .find(|ext| ext.extension_type() == ExtensionType::Unknown(0xF2EE))
         {
             Some(Extension::Unknown(_, ext)) => ext,
             Some(_) => return Err(NostrGroupDataExtensionError::UnexpectedExtensionType),
@@ -127,7 +127,7 @@ impl NostrGroupDataExtension {
         let group_data_extension = match group
             .extensions()
             .iter()
-            .find(|ext| ext.extension_type() == ExtensionType::Unknown(0xFF69))
+            .find(|ext| ext.extension_type() == ExtensionType::Unknown(0xF2EE))
         {
             Some(Extension::Unknown(_, ext)) => ext,
             Some(_) => return Err(NostrGroupDataExtensionError::UnexpectedExtensionType),
@@ -183,20 +183,20 @@ impl NostrGroupDataExtension {
     }
 
     /// Returns the list of admin identities as UTF-8 strings.
-    pub fn admin_identities(&self) -> Vec<String> {
-        self.admin_identities
+    pub fn admin_pubkeys(&self) -> Vec<String> {
+        self.admin_pubkeys
             .iter()
             .map(|identity| String::from_utf8_lossy(identity).to_string())
             .collect()
     }
 
-    /// Sets the complete list of admin identities.
+    /// Sets the complete list of admin pubkeys.
     ///
     /// # Arguments
     ///
-    /// * `admin_identities` - The new list of admin identities
-    pub fn set_admin_identities(&mut self, admin_identities: Vec<String>) {
-        self.admin_identities = admin_identities
+    /// * `admin_pubkeys_hex` - The new list of admin pubkeys
+    pub fn set_admin_pubkeys(&mut self, admin_pubkeys_hex: Vec<String>) {
+        self.admin_pubkeys = admin_pubkeys_hex
             .into_iter()
             .map(|identity| identity.into_bytes())
             .collect();
@@ -207,18 +207,18 @@ impl NostrGroupDataExtension {
     /// # Arguments
     ///
     /// * `admin_identity` - The admin identity to add
-    pub fn add_admin_identity(&mut self, admin_identity: String) {
-        self.admin_identities.push(admin_identity.into_bytes());
+    pub fn add_admin_pubkey(&mut self, admin_pubkey_hex: String) {
+        self.admin_pubkeys.push(admin_pubkey_hex.into_bytes());
     }
 
     /// Removes an admin identity from the list if it exists.
     ///
     /// # Arguments
     ///
-    /// * `admin_identity` - The admin identity to remove
-    pub fn remove_admin_identity(&mut self, admin_identity: String) {
-        let admin_bytes = admin_identity.into_bytes();
-        self.admin_identities
+    /// * `admin_pubkey_hex` - The admin pubkey to remove
+    pub fn remove_admin_pubkey(&mut self, admin_pubkey_hex: String) {
+        let admin_bytes = admin_pubkey_hex.into_bytes();
+        self.admin_pubkeys
             .retain(|identity| identity != &admin_bytes);
     }
 
@@ -285,7 +285,7 @@ mod tests {
         // Test basic getters
         assert_eq!(extension.name(), "Test Group");
         assert_eq!(extension.description(), "Test Description");
-        assert_eq!(extension.admin_identities(), vec!["admin1", "admin2"]);
+        assert_eq!(extension.admin_pubkeys(), vec!["admin1", "admin2"]);
         assert_eq!(
             extension.relays(),
             vec!["wss://relay1.com", "wss://relay2.com"]
@@ -318,23 +318,23 @@ mod tests {
     }
 
     #[test]
-    fn test_admin_identity_operations() {
+    fn test_admin_pubkey_operations() {
         let mut extension = create_test_extension();
 
         // Test add
-        extension.add_admin_identity("admin3".to_string());
+        extension.add_admin_pubkey("admin3".to_string());
         assert_eq!(
-            extension.admin_identities(),
+            extension.admin_pubkeys(),
             vec!["admin1", "admin2", "admin3"]
         );
 
         // Test remove
-        extension.remove_admin_identity("admin2".to_string());
-        assert_eq!(extension.admin_identities(), vec!["admin1", "admin3"]);
+        extension.remove_admin_pubkey("admin2".to_string());
+        assert_eq!(extension.admin_pubkeys(), vec!["admin1", "admin3"]);
 
-        // Test set_admin_identities
-        extension.set_admin_identities(vec!["newadmin1".to_string(), "newadmin2".to_string()]);
-        assert_eq!(extension.admin_identities(), vec!["newadmin1", "newadmin2"]);
+        // Test set_admin_pubkeys
+        extension.set_admin_pubkeys(vec!["newadmin1".to_string(), "newadmin2".to_string()]);
+        assert_eq!(extension.admin_pubkeys(), vec!["newadmin1", "newadmin2"]);
     }
 
     #[test]

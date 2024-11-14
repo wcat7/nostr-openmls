@@ -575,7 +575,7 @@ dependencies = [
 
 [[package]]
 name = "openmls-nostr"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "bincode",
  "ed25519-dalek",

@@ -1,11 +1,16 @@
-use crate::nostr_credential::{NostrCredential, SignatureKeyPair};
+// TODO: Re-enable this once we've worked out whether we really need it.
+// use crate::nostr_credential::{NostrCredential, SignatureKeyPair};
 use crate::NostrMls;
 use openmls::prelude::*;
+use openmls_basic_credential::SignatureKeyPair;
 use openmls_traits::storage::StorageProvider;
 use thiserror::Error;
 use tls_codec::{Deserialize as TlsDeserialize, Serialize as TlsSerialize};
 
-#[derive(Debug, Error)]
+// Re-export KeyPackage from openmls for consumers
+pub use openmls::key_packages::KeyPackage;
+
+#[derive(Debug, Error, Eq, PartialEq, Clone)]
 pub enum KeyPackageError {
     #[error("Error generating a signature keypair: {0}")]
     SignatureKeypairError(String),
@@ -51,9 +56,9 @@ pub enum KeyPackageError {
 /// * It fails to serialize the key package
 pub fn create_key_package_for_event(
     pubkey: String,
-    nostr_mls: NostrMls,
+    nostr_mls: &NostrMls,
 ) -> Result<String, KeyPackageError> {
-    let (credential, signature_keypair) = generate_credential_with_key(pubkey, &nostr_mls)?;
+    let (credential, signature_keypair) = generate_credential_with_key(pubkey, nostr_mls)?;
 
     let capabilities: Capabilities = Capabilities::new(
         None,
@@ -165,15 +170,15 @@ pub fn delete_key_package_from_storage(
 /// This function will return an error if:
 /// * It fails to generate a signature key pair.
 /// * It fails to store the signature key pair in the crypto provider's storage.
-fn generate_credential_with_key(
+pub fn generate_credential_with_key(
     pubkey: String,
     nostr_mls: &NostrMls,
 ) -> Result<(CredentialWithKey, SignatureKeyPair), KeyPackageError> {
-    let credential = NostrCredential::new(pubkey.clone());
+    let credential = BasicCredential::new(pubkey.clone().into());
     let signature_keypair = SignatureKeyPair::new(nostr_mls.ciphersuite.signature_algorithm())
         .map_err(|e| KeyPackageError::SignatureKeypairError(e.to_string()))?;
 
-    tracing::debug!("NostrCredential keypair generated for {:?}", pubkey);
+    tracing::debug!("BasicCredential keypair generated for {:?}", pubkey);
 
     signature_keypair
         .store(nostr_mls.provider.storage())
@@ -199,7 +204,7 @@ mod tests {
             "884704bd421671e01c13f854d2ce23ce2a5bfe9562f4f297ad2bc921ba30c3a6".to_string();
 
         // Create key package
-        let key_package_hex = create_key_package_for_event(test_pubkey, nostr_mls)
+        let key_package_hex = create_key_package_for_event(test_pubkey, &nostr_mls)
             .expect("Failed to create key package");
 
         // Create new instance for parsing
@@ -220,7 +225,7 @@ mod tests {
             "884704bd421671e01c13f854d2ce23ce2a5bfe9562f4f297ad2bc921ba30c3a6".to_string();
 
         // Create and parse key package
-        let key_package_hex = create_key_package_for_event(test_pubkey, nostr_mls)
+        let key_package_hex = create_key_package_for_event(test_pubkey, &nostr_mls)
             .expect("Failed to create key package");
 
         // Create new instance for parsing and deletion
