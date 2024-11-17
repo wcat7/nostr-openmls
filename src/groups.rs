@@ -21,6 +21,9 @@ pub enum GroupError {
 
     #[error("Error serializing message for group: {0}")]
     SerializeMessageError(String),
+
+    #[error("Error exporting group secret: {0}")]
+    ExportSecretError(String),
 }
 
 #[derive(Debug)]
@@ -150,10 +153,25 @@ pub fn create_message_for_group(
 
     Ok(serialized_message)
 }
-// Send a message to a group
+
+pub fn export_secret_as_hex_secret_key(
+    nostr_mls: &NostrMls,
+    mls_group_id: Vec<u8>,
+) -> Result<String, GroupError> {
+    let group = MlsGroup::load(
+        nostr_mls.provider.storage(),
+        &GroupId::from_slice(&mls_group_id),
+    )
+    .map_err(|e| GroupError::LoadGroupError(e.to_string()))?
+    .ok_or_else(|| GroupError::LoadGroupError("Group not found".to_string()))?;
+
+    let export_secret = group
+        .export_secret(&nostr_mls.provider, "gw-key", b"gw-key", 32)
+        .map_err(|e| GroupError::ExportSecretError(e.to_string()))?;
+
+    Ok(hex::encode(&export_secret))
+}
 
 // Fetch and process messages from a group
 
 // Get group member public keys
-
-// Export secret as keys

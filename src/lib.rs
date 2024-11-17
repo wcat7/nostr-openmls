@@ -120,7 +120,7 @@ impl NostrMls {
         )
     }
 
-    pub fn delete_data(&self) -> Result<(), SledStorageError> {
+    pub fn delete_all_data(&self) -> Result<(), SledStorageError> {
         tracing::debug!(target: "nostr_mls::delete_data", "Deleting all data from key store");
         self.provider.key_store.delete_all_data()
     }
@@ -169,5 +169,20 @@ impl NostrMls {
         welcome_message: Vec<u8>,
     ) -> Result<welcomes::JoinedGroupResult, welcomes::WelcomeError> {
         welcomes::join_group_from_welcome(self, welcome_message)
+    }
+
+    pub fn create_message_for_group(
+        &self,
+        mls_group_id: Vec<u8>,
+        message: String,
+    ) -> Result<Vec<u8>, groups::GroupError> {
+        groups::create_message_for_group(self, mls_group_id, message)
+    }
+
+    pub fn export_secret_as_hex_secret_key(
+        &self,
+        mls_group_id: Vec<u8>,
+    ) -> Result<String, groups::GroupError> {
+        groups::export_secret_as_hex_secret_key(self, mls_group_id)
     }
 }
