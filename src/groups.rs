@@ -228,7 +228,7 @@ pub fn export_secret_as_hex_secret_key(
     .ok_or_else(|| GroupError::LoadGroupError("Group not found".to_string()))?;
 
     let export_secret = group
-        .export_secret(&nostr_mls.provider, "gw-key", b"gw-key", 32)
+        .export_secret(&nostr_mls.provider, "nostr", b"nostr", 32)
         .map_err(|e| GroupError::ExportSecretError(e.to_string()))?;
 
     Ok(hex::encode(&export_secret))
