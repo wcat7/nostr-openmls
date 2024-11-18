@@ -1,13 +1,13 @@
 [package]
-name = "openmls-nostr"
+name = "nostr-openmls"
 authors = ["White Noise Authors"]
 version = "0.1.0"
 edition = "2021"
 description = "A library to help use OpenMLS with Nostr."
 license = "MIT"
-documentation = "https://docs.rs/openmls-nostr"
-repository = "https://github.com/erskingardner/openmls-nostr"
-homepage = "https://github.com/erskingardner/openmls-nostr"
+documentation = "https://docs.rs/nostr-openmls"
+repository = "https://github.com/erskingardner/nostr-openmls"
+homepage = "https://github.com/erskingardner/nostr-openmls"
 readme = "README.md"
 keywords = ["openmls", "nostr", "mls"]
 exclude = [".github/", "tests/", "Cargo.lock", ".gitignore"]

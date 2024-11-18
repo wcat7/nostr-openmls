@@ -3,6 +3,7 @@
 //! An adaptation of the basic credential from the MLS spec for Nostr Groups.
 //!
 //! For now this credential uses only RustCrypto.
+//! Currently this isn't used but is here for potential future use.
 
 use std::fmt::Debug;
 

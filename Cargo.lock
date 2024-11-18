@@ -549,6 +549,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
+name = "nostr-openmls"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "ed25519-dalek",
+ "hex",
+ "openmls",
+ "openmls-sled-storage",
+ "openmls_basic_credential",
+ "openmls_rust_crypto",
+ "openmls_traits",
+ "p256",
+ "rand",
+ "serde",
+ "tempfile",
+ "thiserror",
+ "tls_codec",
+ "tracing",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -571,27 +592,6 @@ dependencies = [
  "serde",
  "thiserror",
  "tls_codec",
-]
-
-[[package]]
-name = "openmls-nostr"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "ed25519-dalek",
- "hex",
- "openmls",
- "openmls-sled-storage",
- "openmls_basic_credential",
- "openmls_rust_crypto",
- "openmls_traits",
- "p256",
- "rand",
- "serde",
- "tempfile",
- "thiserror",
- "tls_codec",
- "tracing",
 ]
 
 [[package]]

@@ -33,6 +33,36 @@ pub struct CreateGroupResult {
     pub nostr_group_data: NostrGroupDataExtension,
 }
 
+/// Creates a new MLS group with the specified members and settings.
+///
+/// This function creates a new MLS group with the given name, description, members, and administrators.
+/// It generates the necessary cryptographic credentials, configures the group with Nostr-specific extensions,
+/// and adds the specified members.
+///
+/// # Arguments
+///
+/// * `nostr_mls` - The NostrMls instance containing MLS configuration and provider
+/// * `name` - The name of the group
+/// * `description` - A description of the group
+/// * `member_key_packages` - A vector of KeyPackages for the initial group members
+/// * `admin_pubkeys_hex` - A vector of hex-encoded Nostr public keys for group administrators
+/// * `creator_pubkey_hex` - The hex-encoded Nostr public key of the group creator
+/// * `group_relays` - A vector of relay URLs where group messages will be published
+///
+/// # Returns
+///
+/// A `CreateGroupResult` containing:
+/// - The created MLS group
+/// - A serialized welcome message for the initial members
+/// - The Nostr-specific group data
+///
+/// # Errors
+///
+/// Returns a `GroupError` if:
+/// - Credential generation fails
+/// - Group creation fails
+/// - Adding members fails
+/// - Message serialization fails
 pub fn create_mls_group(
     nostr_mls: &NostrMls,
     name: String,
@@ -124,6 +154,28 @@ pub fn create_mls_group(
     })
 }
 
+/// Creates an encrypted message for an MLS group
+///
+/// This function loads the specified MLS group, retrieves the necessary signing keys,
+/// and creates an encrypted message that can only be decrypted by other group members.
+///
+/// # Arguments
+///
+/// * `nostr_mls` - The NostrMls instance containing MLS configuration and provider
+/// * `mls_group_id` - The ID of the MLS group to create the message for
+/// * `message` - The message content to encrypt
+///
+/// # Returns
+///
+/// A serialized encrypted MLS message as a byte vector on success, or a GroupError on failure.
+///
+/// # Errors
+///
+/// Returns a GroupError if:
+/// - The group cannot be loaded from storage
+/// - The signing keys cannot be loaded
+/// - Message creation fails
+/// - Message serialization fails
 pub fn create_message_for_group(
     nostr_mls: &NostrMls,
     mls_group_id: Vec<u8>,
@@ -154,6 +206,16 @@ pub fn create_message_for_group(
     Ok(serialized_message)
 }
 
+/// Exports a secret key from the MLS group as a hex-encoded string.
+/// This secret is used for NIP-44 encrypting the content field of Group Message Events (kind:445)
+///
+/// # Arguments
+/// * `nostr_mls` - The NostrMls instance containing the provider and storage
+/// * `mls_group_id` - The ID of the MLS group to export the secret from
+///
+/// # Returns
+/// * `Ok(String)` - The hex-encoded secret key if successful
+/// * `Err(GroupError)` - If there was an error loading the group or exporting the secret
 pub fn export_secret_as_hex_secret_key(
     nostr_mls: &NostrMls,
     mls_group_id: Vec<u8>,
