@@ -179,10 +179,18 @@ impl NostrMls {
         groups::create_message_for_group(self, mls_group_id, message)
     }
 
-    pub fn export_secret_as_hex_secret_key(
+    pub fn export_secret_as_hex_secret_key_and_epoch(
         &self,
         mls_group_id: Vec<u8>,
-    ) -> Result<String, groups::GroupError> {
-        groups::export_secret_as_hex_secret_key(self, mls_group_id)
+    ) -> Result<(String, u64), groups::GroupError> {
+        groups::export_secret_as_hex_secret_key_and_epoch(self, mls_group_id)
+    }
+
+    pub fn process_message_for_group(
+        &self,
+        mls_group_id: Vec<u8>,
+        message: Vec<u8>,
+    ) -> Result<Vec<u8>, groups::GroupError> {
+        groups::process_message_for_group(self, mls_group_id, message)
     }
 }

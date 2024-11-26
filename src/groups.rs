@@ -4,7 +4,7 @@ use crate::{
 };
 use openmls::prelude::*;
 use openmls_basic_credential::SignatureKeyPair;
-use tls_codec::Serialize as TlsSerialize;
+use tls_codec::{Deserialize as TlsDeserialize, Serialize as TlsSerialize};
 
 use thiserror::Error;
 
@@ -24,6 +24,9 @@ pub enum GroupError {
 
     #[error("Error exporting group secret: {0}")]
     ExportSecretError(String),
+
+    #[error("Error processing message for group: {0}")]
+    ProcessMessageError(String),
 }
 
 #[derive(Debug)]
@@ -216,10 +219,10 @@ pub fn create_message_for_group(
 /// # Returns
 /// * `Ok(String)` - The hex-encoded secret key if successful
 /// * `Err(GroupError)` - If there was an error loading the group or exporting the secret
-pub fn export_secret_as_hex_secret_key(
+pub fn export_secret_as_hex_secret_key_and_epoch(
     nostr_mls: &NostrMls,
     mls_group_id: Vec<u8>,
-) -> Result<String, GroupError> {
+) -> Result<(String, u64), GroupError> {
     let group = MlsGroup::load(
         nostr_mls.provider.storage(),
         &GroupId::from_slice(&mls_group_id),
@@ -231,9 +234,69 @@ pub fn export_secret_as_hex_secret_key(
         .export_secret(&nostr_mls.provider, "nostr", b"nostr", 32)
         .map_err(|e| GroupError::ExportSecretError(e.to_string()))?;
 
-    Ok(hex::encode(&export_secret))
+    Ok((hex::encode(&export_secret), group.epoch().as_u64()))
 }
 
-// Fetch and process messages from a group
+pub fn process_message_for_group(
+    nostr_mls: &NostrMls,
+    mls_group_id: Vec<u8>,
+    message: Vec<u8>,
+) -> Result<Vec<u8>, GroupError> {
+    let mut group = MlsGroup::load(
+        nostr_mls.provider.storage(),
+        &GroupId::from_slice(&mls_group_id),
+    )
+    .map_err(|e| GroupError::LoadGroupError(e.to_string()))?
+    .ok_or_else(|| GroupError::LoadGroupError("Group not found".to_string()))?;
 
-// Get group member public keys
+    let mls_message = MlsMessageIn::tls_deserialize_exact(message.as_slice())
+        .map_err(|e| GroupError::ProcessMessageError(e.to_string()))?;
+
+    tracing::debug!(target: "nostr_openmls::groups::process_message_for_group", "Received message: {:?}", mls_message);
+    let protocol_message = mls_message
+        .try_into_protocol_message()
+        .map_err(|e| GroupError::ProcessMessageError(e.to_string()))?;
+
+    match protocol_message.group_id() == group.group_id() {
+        true => {
+            let processed_message = group
+                .process_message(&nostr_mls.provider, protocol_message)
+                .map_err(|e| GroupError::ProcessMessageError(e.to_string()))?;
+
+            // Handle the processed message based on its type
+            match processed_message.into_content() {
+                ProcessedMessageContent::ApplicationMessage(application_message) => {
+                    // This is a message from a group member
+                    Ok(application_message.into_bytes())
+                }
+                ProcessedMessageContent::ProposalMessage(staged_proposal) => {
+                    // This is a proposal message
+                    tracing::debug!(target: "nostr_openmls::groups::process_message_for_group", "Received proposal message: {:?}", staged_proposal);
+                    // TODO: Handle proposal message
+                    Ok(vec![])
+                }
+                ProcessedMessageContent::StagedCommitMessage(staged_commit) => {
+                    // This is a commit message
+                    tracing::debug!(target: "nostr_openmls::groups::process_message_for_group", "Received commit message: {:?}", staged_commit);
+                    // TODO: Handle commit message
+                    Ok(vec![])
+                }
+                ProcessedMessageContent::ExternalJoinProposalMessage(external_join_proposal) => {
+                    tracing::debug!(target: "nostr_openmls::groups::process_message_for_group", "Received external join proposal message: {:?}", external_join_proposal);
+                    // TODO: Handle external join proposal
+                    Ok(vec![])
+                }
+            }
+        }
+        false => {
+            tracing::error!(target: "nostr_openmls::groups::process_message_for_group", "ProtocolMessage GroupId doesn't match MlsGroup GroupId. Not processing event");
+            Err(GroupError::ProcessMessageError(
+                "ProtocolMessage GroupId doesn't match MlsGroup GroupId. Not processing event"
+                    .to_string(),
+            ))
+        }
+    }
+}
+// TODO: Rotate own signing key
+// - Create proposal
+// - Send commit
