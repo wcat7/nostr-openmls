@@ -1,6 +1,10 @@
 # Nostr OpenMLS
 
-A rust crate to help use OpenMLS with Nostr according to the [NIP-104](https://github.com/nostr-protocol/nips/pull/1427) spec.
+A simplified interface to work with [OpenMLS](https://github.com/openmls/openmls) on Nostr according to the [NIP-104](https://github.com/nostr-protocol/nips/pull/1427) spec.
+
+## Examples
+
+- [basic-example](examples/basic-example): Check out this basic example of how to use Nostr OpenMLS to create a group, send a message, and receive a message in your app.
 
 ## Current Status
 
@@ -9,7 +13,7 @@ A rust crate to help use OpenMLS with Nostr according to the [NIP-104](https://g
 - [x] Create a group
 - [x] Export a secret key
 - [x] Send a message
-- [ ] Receive a message
+- [x] Receive a message
 
 ### Key Packages
 

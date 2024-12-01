@@ -11,8 +11,6 @@ pub mod groups;
 pub mod key_packages;
 pub mod nostr_group_data_extension;
 pub mod welcomes;
-// TODO: Re-enable this once we've worked out whether we really need it.
-// pub mod nostr_credential;
 
 #[cfg(test)]
 pub mod test_utils;
