@@ -130,6 +130,37 @@ impl NostrMls {
             .join(",")
     }
 
+    // ==================================
+    // Group operations
+    // ==================================
+
+    /// Creates a new MLS group with the specified members and settings.
+    ///
+    /// This is a convenience wrapper around [`groups::create_mls_group`].
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the group
+    /// * `description` - A description of the group
+    /// * `member_key_packages` - A vector of KeyPackages for the initial group members
+    /// * `admin_pubkeys_hex` - A vector of hex-encoded Nostr public keys for group administrators
+    /// * `creator_pubkey_hex` - The hex-encoded Nostr public key of the group creator
+    /// * `group_relays` - A vector of relay URLs where group messages will be published
+    ///
+    /// # Returns
+    ///
+    /// A `CreateGroupResult` containing:
+    /// - The created MLS group
+    /// - A serialized welcome message for the initial members
+    /// - The Nostr-specific group data
+    ///
+    /// # Errors
+    ///
+    /// Returns a `GroupError` if:
+    /// - Credential generation fails
+    /// - Group creation fails
+    /// - Adding members fails
+    /// - Message serialization fails
     pub fn create_group(
         &self,
         name: String,
@@ -150,20 +181,19 @@ impl NostrMls {
         )
     }
 
-    pub fn preview_welcome_event(
-        &self,
-        welcome_message: Vec<u8>,
-    ) -> Result<welcomes::WelcomePreview, welcomes::WelcomeError> {
-        welcomes::preview_welcome_event(self, welcome_message)
-    }
-
-    pub fn join_group_from_welcome(
-        &self,
-        welcome_message: Vec<u8>,
-    ) -> Result<welcomes::JoinedGroupResult, welcomes::WelcomeError> {
-        welcomes::join_group_from_welcome(self, welcome_message)
-    }
-
+    /// Creates an encrypted message for a group.
+    ///
+    /// This is a convenience wrapper around [`groups::create_message_for_group`].
+    ///
+    /// # Arguments
+    ///
+    /// * `mls_group_id` - The ID of the MLS group as a byte vector
+    /// * `message` - The plaintext message to encrypt
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the serialized encrypted MLS message if successful,
+    /// or a GroupError if encryption fails
     pub fn create_message_for_group(
         &self,
         mls_group_id: Vec<u8>,
@@ -172,6 +202,25 @@ impl NostrMls {
         groups::create_message_for_group(self, mls_group_id, message)
     }
 
+    /// Exports the current group secret and epoch number.
+    ///
+    /// This is a convenience wrapper around [`groups::export_secret_as_hex_secret_key_and_epoch`].
+    ///
+    /// # Arguments
+    ///
+    /// * `mls_group_id` - The ID of the MLS group to export the secret from
+    ///
+    /// # Returns
+    ///
+    /// A Result containing a tuple of:
+    /// - The hex-encoded secret key
+    /// - The current epoch number
+    ///
+    /// # Errors
+    ///
+    /// Returns a GroupError if:
+    /// - The group cannot be loaded
+    /// - Secret export fails
     pub fn export_secret_as_hex_secret_key_and_epoch(
         &self,
         mls_group_id: Vec<u8>,
@@ -179,11 +228,89 @@ impl NostrMls {
         groups::export_secret_as_hex_secret_key_and_epoch(self, mls_group_id)
     }
 
+    /// Processes an incoming MLS message for a group.
+    ///
+    /// This is a convenience wrapper around [`groups::process_message_for_group`].
+    ///
+    /// # Arguments
+    ///
+    /// * `mls_group_id` - The ID of the MLS group as a byte vector
+    /// * `message` - The serialized MLS message to process
+    ///
+    /// # Returns
+    ///
+    /// A Result containing:
+    /// - For application messages: The decrypted message bytes
+    /// - For other message types: An empty vector
+    ///
+    /// # Errors
+    ///
+    /// Returns a GroupError if:
+    /// - The group cannot be loaded
+    /// - Message processing fails
     pub fn process_message_for_group(
         &self,
         mls_group_id: Vec<u8>,
         message: Vec<u8>,
     ) -> Result<Vec<u8>, groups::GroupError> {
         groups::process_message_for_group(self, mls_group_id, message)
+    }
+
+    /// Gets the Nostr public keys of all group members.
+    ///
+    /// This is a convenience wrapper around [`groups::member_pubkeys`].
+    ///
+    /// # Arguments
+    ///
+    /// * `mls_group_id` - The ID of the MLS group as a byte vector
+    ///
+    /// # Returns
+    ///
+    /// A Result containing a vector of hex-encoded Nostr public keys for all group members,
+    /// or a GroupError if member information cannot be retrieved
+    pub fn member_pubkeys(&self, mls_group_id: Vec<u8>) -> Result<Vec<String>, groups::GroupError> {
+        groups::member_pubkeys(self, mls_group_id)
+    }
+
+    // ==================================
+    // Welcome operations
+    // ==================================
+
+    /// Previews a welcome event message without joining the group.
+    ///
+    /// This function is a convenience wrapper around [`welcomes::preview_welcome_event`].
+    ///
+    /// # Arguments
+    ///
+    /// * `welcome_message` - The serialized welcome message as a byte vector
+    ///
+    /// # Returns
+    ///
+    /// A Result containing a WelcomePreview with the staged welcome and group data if successful,
+    /// or a WelcomeError if parsing fails
+    pub fn preview_welcome_event(
+        &self,
+        welcome_message: Vec<u8>,
+    ) -> Result<welcomes::WelcomePreview, welcomes::WelcomeError> {
+        welcomes::preview_welcome_event(self, welcome_message)
+    }
+
+    /// Joins a group using a welcome message.
+    ///
+    /// It's a convenience wrapper around [`welcomes::join_group_from_welcome`].
+    ///
+    /// # Arguments
+    ///
+    /// * `welcome_message` - The serialized welcome message as a byte vector
+    ///
+    /// # Returns
+    ///
+    /// A Result containing a JoinedGroupResult with the joined MLS group and group data if successful,
+    /// or a WelcomeError if joining fails
+    pub fn join_group_from_welcome(
+        &self,
+        welcome_message: Vec<u8>,
+    ) -> Result<welcomes::JoinedGroupResult, welcomes::WelcomeError> {
+        welcomes::join_group_from_welcome(self, welcome_message)
     }
 }

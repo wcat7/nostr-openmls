@@ -27,6 +27,9 @@ pub enum GroupError {
 
     #[error("Error processing message for group: {0}")]
     ProcessMessageError(String),
+
+    #[error("Error with member identity: {0}")]
+    MemberIdentityError(String),
 }
 
 #[derive(Debug)]
@@ -237,6 +240,31 @@ pub fn export_secret_as_hex_secret_key_and_epoch(
     Ok((hex::encode(&export_secret), group.epoch().as_u64()))
 }
 
+/// Processes an incoming MLS message for a group.
+///
+/// This function loads the specified MLS group, processes the incoming message according to the MLS protocol,
+/// and handles the resulting processed message content appropriately.
+///
+/// # Arguments
+///
+/// * `nostr_mls` - The NostrMls instance containing MLS configuration and provider
+/// * `mls_group_id` - The ID of the MLS group as a byte vector
+/// * `message` - The serialized MLS message to process
+///
+/// # Returns
+///
+/// A Result containing:
+/// - For application messages: The decrypted message bytes
+/// - For other message types (proposals, commits, etc): An empty vector
+///
+/// # Errors
+///
+/// Returns a GroupError if:
+/// - The group cannot be loaded from storage
+/// - The specified group is not found
+/// - The message cannot be deserialized
+/// - The message's group ID doesn't match the loaded group
+/// - There is an error processing the message
 pub fn process_message_for_group(
     nostr_mls: &NostrMls,
     mls_group_id: Vec<u8>,
@@ -296,6 +324,53 @@ pub fn process_message_for_group(
             ))
         }
     }
+}
+
+/// Returns a list of Nostr hex-encoded public keys for all members in an MLS group.
+///
+/// This function loads the specified MLS group and extracts the Nostr public keys
+/// of all current group members from their credentials.
+///
+/// # Arguments
+///
+/// * `nostr_mls` - The NostrMls instance containing MLS configuration and provider
+/// * `mls_group_id` - The ID of the MLS group as a byte vector
+///
+/// # Returns
+///
+/// A Result containing a vector of hex-encoded Nostr public keys for all group members.
+///
+/// # Errors
+///
+/// Returns a GroupError if:
+/// - The group cannot be loaded from storage
+/// - The specified group is not found
+/// - A member's credential cannot be parsed
+/// - A member's identity bytes cannot be converted to a string
+pub fn member_pubkeys(
+    nostr_mls: &NostrMls,
+    mls_group_id: Vec<u8>,
+) -> Result<Vec<String>, GroupError> {
+    let group = MlsGroup::load(
+        nostr_mls.provider.storage(),
+        &GroupId::from_slice(&mls_group_id),
+    )
+    .map_err(|e| GroupError::LoadGroupError(e.to_string()))?
+    .ok_or_else(|| GroupError::LoadGroupError("Group not found".to_string()))?;
+
+    // Store members in a variable to extend its lifetime
+    let mut members = group.members();
+    members.try_fold(Vec::new(), |mut acc, m| {
+        let pubkey = String::from_utf8(
+            BasicCredential::try_from(m.credential)
+                .map_err(|e| GroupError::MemberIdentityError(e.to_string()))?
+                .identity()
+                .to_vec(),
+        )
+        .map_err(|e| GroupError::MemberIdentityError(e.to_string()))?;
+        acc.push(pubkey);
+        Ok(acc)
+    })
 }
 // TODO: Rotate own signing key
 // - Create proposal
