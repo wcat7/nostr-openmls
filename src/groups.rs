@@ -2,6 +2,7 @@ use crate::NostrMls;
 use crate::{
     key_packages::generate_credential_with_key, nostr_group_data_extension::NostrGroupDataExtension,
 };
+
 use openmls::prelude::*;
 use openmls_basic_credential::SignatureKeyPair;
 use tls_codec::{Deserialize as TlsDeserialize, Serialize as TlsSerialize};
@@ -30,6 +31,12 @@ pub enum GroupError {
 
     #[error("Error with member identity: {0}")]
     MemberIdentityError(String),
+
+    #[error("Error with signature keypair: {0}")]
+    SignatureKeypairError(String),
+
+    #[error("Error with self update: {0}")]
+    SelfUpdateError(String),
 }
 
 #[derive(Debug)]
@@ -37,6 +44,14 @@ pub struct CreateGroupResult {
     pub mls_group: MlsGroup,
     pub serialized_welcome_message: Vec<u8>,
     pub nostr_group_data: NostrGroupDataExtension,
+}
+
+#[derive(Debug)]
+pub struct SelfUpdateResult {
+    pub serialized_message: Vec<u8>,
+    pub current_exporter_secret_hex: String,
+    pub new_exporter_secret_hex: String,
+    pub new_epoch: u64,
 }
 
 /// Creates a new MLS group with the specified members and settings.
@@ -287,10 +302,18 @@ pub fn process_message_for_group(
 
     match protocol_message.group_id() == group.group_id() {
         true => {
+            if protocol_message.content_type() == ContentType::Commit {
+                tracing::debug!(target: "nostr_openmls::groups::process_message_for_group", "ABOUT TO PROCESS COMMIT MESSAGE");
+            }
             let processed_message = group
                 .process_message(&nostr_mls.provider, protocol_message)
                 .map_err(|e| GroupError::ProcessMessageError(e.to_string()))?;
 
+            tracing::debug!(
+                target: "nostr_openmls::groups::process_message_for_group",
+                "Processed message: {:?}",
+                processed_message
+            );
             // Handle the processed message based on its type
             match processed_message.into_content() {
                 ProcessedMessageContent::ApplicationMessage(application_message) => {
@@ -372,6 +395,112 @@ pub fn member_pubkeys(
         Ok(acc)
     })
 }
-// TODO: Rotate own signing key
-// - Create proposal
-// - Send commit
+
+/// Updates the current member's leaf node in an MLS group.
+/// Does not currently support updating any group attributes.
+///
+/// This function performs a self-update operation in the specified MLS group by:
+/// 1. Loading the group from storage
+/// 2. Generating a new signature keypair
+/// 3. Storing the keypair
+/// 4. Creating and applying a self-update proposal
+///
+/// # Arguments
+///
+/// * `nostr_mls` - The NostrMls instance containing MLS configuration and provider
+/// * `mls_group_id` - The ID of the MLS group as a byte vector
+///
+/// # Returns
+///
+/// A Result containing a tuple of:
+/// - MlsMessageOut: The self-update message to be sent to the group
+/// - Option<MlsMessageOut>: Optional welcome message if new members are added
+/// - Option<GroupInfo>: Optional updated group info
+///
+/// # Errors
+///
+/// Returns a GroupError if:
+/// - The group cannot be loaded from storage
+/// - The specified group is not found
+/// - Failed to generate or store signature keypair
+/// - Failed to perform self-update operation
+pub fn self_update(
+    nostr_mls: &NostrMls,
+    mls_group_id: Vec<u8>,
+) -> Result<SelfUpdateResult, GroupError> {
+    let mut group = MlsGroup::load(
+        nostr_mls.provider.storage(),
+        &GroupId::from_slice(&mls_group_id),
+    )
+    .map_err(|e| GroupError::LoadGroupError(e.to_string()))?
+    .ok_or_else(|| GroupError::LoadGroupError("Group not found".to_string()))?;
+
+    let (current_exporter_secret_hex, current_epoch) =
+        nostr_mls.export_secret_as_hex_secret_key_and_epoch(mls_group_id.clone())?;
+    tracing::debug!(target: "nostr_openmls::groups::self_update", "Current epoch: {:?}", current_epoch);
+
+    let current_signature_keypair = SignatureKeyPair::read(
+        nostr_mls.provider.storage(),
+        group.own_leaf().unwrap().signature_key().clone().as_slice(),
+        group.ciphersuite().signature_algorithm(),
+    )
+    .unwrap();
+
+    let new_signature_keypair = SignatureKeyPair::new(nostr_mls.ciphersuite.signature_algorithm())
+        .map_err(|e| GroupError::SignatureKeypairError(e.to_string()))?;
+
+    new_signature_keypair
+        .store(nostr_mls.provider.storage())
+        .map_err(|e| GroupError::SignatureKeypairError(e.to_string()))?;
+
+    let pubkey = BasicCredential::try_from(group.own_leaf().unwrap().credential().clone())
+        .map_err(|e| GroupError::MemberIdentityError(e.to_string()))?
+        .identity()
+        .to_vec();
+
+    let new_credential: BasicCredential = BasicCredential::new(pubkey);
+    let new_credential_with_key = CredentialWithKey {
+        credential: new_credential.into(),
+        signature_key: new_signature_keypair.public().into(),
+    };
+
+    let leaf_node_params = LeafNodeParameters::builder()
+        .with_credential_with_key(new_credential_with_key)
+        .with_capabilities(group.own_leaf().unwrap().capabilities().clone())
+        .with_extensions(group.own_leaf().unwrap().extensions().clone())
+        .build();
+
+    let (mls_message, _welcome, _group_info) = group
+        .self_update(
+            &nostr_mls.provider,
+            &current_signature_keypair,
+            leaf_node_params,
+        )
+        .map_err(|e| GroupError::SelfUpdateError(e.to_string()))?;
+
+    // Merge the commit
+    group
+        .merge_pending_commit(&nostr_mls.provider)
+        .map_err(|e| GroupError::SelfUpdateError(e.to_string()))?;
+
+    // Export the new epoch's exporter secret
+    let (new_exporter_secret_hex, new_epoch) =
+        nostr_mls.export_secret_as_hex_secret_key_and_epoch(mls_group_id)?;
+
+    tracing::debug!(target: "nostr_openmls::groups::self_update", "New epoch: {:?}", new_epoch);
+
+    // Serialize the message
+    let serialized_message = mls_message
+        .tls_serialize_detached()
+        .map_err(|e| GroupError::SerializeMessageError(e.to_string()))?;
+
+    Ok(SelfUpdateResult {
+        serialized_message,
+        current_exporter_secret_hex,
+        new_exporter_secret_hex,
+        new_epoch,
+    })
+}
+
+// TODO: Create proposal
+// TODO: Send commit
