@@ -88,7 +88,8 @@ impl NostrMls {
         };
         std::fs::create_dir_all(&final_path).expect("Failed to create identity directory");
 
-        let key_store = RedbStorage::new(final_path.to_str().expect("Invalid path"))
+        let db_path = final_path.join("mls.db");
+        let key_store = RedbStorage::new(db_path.to_str().expect("Invalid path"))
             .expect("Failed to create MLS storage with the right path");
 
         let provider = NostrMlsProvider {
