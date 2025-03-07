@@ -3,7 +3,7 @@
 
 use openmls::prelude::*;
 use openmls_rust_crypto::RustCrypto;
-use openmls_sled_storage::{SledStorage, SledStorageError};
+use openmls_redb_storage::{RedbStorage, RedbStorageError};
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -34,13 +34,13 @@ pub struct NostrMls {
 /// The provider struct for Nostr MLS that implements the OpenMLS Provider trait.
 pub struct NostrMlsProvider {
     crypto: RustCrypto,
-    key_store: SledStorage,
+    key_store: RedbStorage,
 }
 
 impl OpenMlsProvider for NostrMlsProvider {
     type CryptoProvider = RustCrypto;
     type RandProvider = RustCrypto;
-    type StorageProvider = SledStorage;
+    type StorageProvider = RedbStorage;
 
     fn storage(&self) -> &Self::StorageProvider {
         &self.key_store
@@ -77,24 +77,19 @@ impl NostrMls {
     ];
 
     pub fn new(storage_path: PathBuf, active_identity: Option<String>) -> Self {
-        // We want MLS data to be stored on a per user basis so we create a new path
-        // and hence a new database instance for each user.
-        // However, if we don't have a active identity (which means we're not going to use MLS)
-        // we can just use the default path (which creates an empty database).
-        let key_store = match active_identity.as_ref() {
-            Some(identity) => SledStorage::new_from_path(format!(
-                "{}/{}/{}",
-                storage_path.to_string_lossy(),
-                "mls_storage",
-                identity
-            )),
-            None => SledStorage::new_from_path(format!(
-                "{}/{}",
-                storage_path.to_string_lossy(),
-                "mls_storage"
-            )),
-        }
-        .expect("Failed to create MLS storage with the right path");
+        // Create the base MLS storage directory
+        let mls_path = storage_path.join("mls_storage");
+        std::fs::create_dir_all(&mls_path).expect("Failed to create MLS storage directory");
+
+        // Create the final path and ensure it exists
+        let final_path = match active_identity.as_ref() {
+            Some(identity) => mls_path.join(identity),
+            None => mls_path,
+        };
+        std::fs::create_dir_all(&final_path).expect("Failed to create identity directory");
+
+        let key_store = RedbStorage::new(final_path.to_str().expect("Invalid path"))
+            .expect("Failed to create MLS storage with the right path");
 
         let provider = NostrMlsProvider {
             key_store,
@@ -118,7 +113,7 @@ impl NostrMls {
         )
     }
 
-    pub fn delete_all_data(&self) -> Result<(), SledStorageError> {
+    pub fn delete_all_data(&self) -> Result<(), RedbStorageError> {
         tracing::debug!(target: "nostr_mls::delete_data", "Deleting all data from key store");
         self.provider.key_store.delete_all_data()
     }
