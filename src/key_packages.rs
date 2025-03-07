@@ -147,6 +147,30 @@ pub fn delete_key_package_from_storage(
         .storage()
         .delete_key_package(&hash_ref)
         .map_err(|e| KeyPackageError::CouldNotDeleteKeyPackage(e.to_string()))
+
+}
+
+/// Load a key package from the MLS provider's storage.
+pub fn load_key_package_from_storage(
+    key_package: KeyPackage,
+    nostr_mls: &NostrMls,
+) -> Result<(), KeyPackageError> {
+    let hash_ref = key_package
+        .hash_ref(nostr_mls.provider.crypto())
+        .map_err(|e| KeyPackageError::KeyPackageError(e.to_string()))?;
+    
+    let maybe_kp: Option<KeyPackageBundle> = nostr_mls
+        .provider
+        .storage()
+        .key_package::<_, KeyPackageBundle>(&hash_ref)
+        .map_err(|e| KeyPackageError::KeyPackageError(e.to_string()))?;
+    
+    match maybe_kp {
+        Some(_) => Ok(()),
+        None => Err(KeyPackageError::KeyPackageError(
+            "Key package not found".into(),
+        )),
+    }
 }
 
 /// Generates a credential with a key for MLS (Messaging Layer Security) operations.
