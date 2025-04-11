@@ -37,6 +37,12 @@ pub enum GroupError {
 
     #[error("Error with self update: {0}")]
     SelfUpdateError(String),
+
+    #[error("Error creating proposal: {0}")]
+    CreateProposalError(String),
+
+    #[error("Error sending commit: {0}")]
+    SendCommitError(String),
 }
 
 #[derive(Debug)]
@@ -502,5 +508,260 @@ pub fn self_update(
     })
 }
 
-// TODO: Create proposal
-// TODO: Send commit
+/// Creates a proposal to update group extensions
+/// 
+/// # Arguments
+/// 
+/// * `nostr_mls` - The NostrMls instance containing MLS configuration and provider
+/// * `mls_group_id` - The ID of the MLS group as a byte vector
+/// * `name` - New group name
+/// * `description` - New group description
+/// * `admin_pubkeys_hex` - New list of admin public keys
+/// * `group_relays` - New list of group relays
+/// 
+/// # Returns
+/// 
+/// A serialized proposal message as a byte vector on success, or a GroupError on failure.
+pub fn propose_update_group_info(
+    nostr_mls: &NostrMls,
+    mls_group_id: Vec<u8>,
+    name: String,
+    description: String,
+    admin_pubkeys_hex: Vec<String>,
+    group_relays: Vec<String>,
+) -> Result<Vec<u8>, GroupError> {
+    let mut group = MlsGroup::load(
+        nostr_mls.provider.storage(),
+        &GroupId::from_slice(&mls_group_id),
+    )
+    .map_err(|e| GroupError::LoadGroupError(e.to_string()))?
+    .ok_or_else(|| GroupError::LoadGroupError("Group not found".to_string()))?;
+
+    let signer = SignatureKeyPair::read(
+        nostr_mls.provider.storage(),
+        group.own_leaf().unwrap().signature_key().clone().as_slice(),
+        group.ciphersuite().signature_algorithm(),
+    )
+    .ok_or_else(|| GroupError::LoadGroupError("Failed to load signer".to_string()))?;
+
+    // Create new group data extension
+    let group_data = NostrGroupDataExtension::new(name, description, admin_pubkeys_hex, group_relays);
+    let serialized_group_data = group_data
+        .tls_serialize_detached()
+        .expect("Failed to serialize group data");
+
+    let extensions = vec![Extension::Unknown(
+        group_data.extension_type(),
+        UnknownExtension(serialized_group_data),
+    )];
+
+    let (message, _proposal_ref) = group
+        .propose_group_context_extensions(
+            &nostr_mls.provider,
+            Extensions::from_vec(extensions).expect("Failed to create extensions"),
+            &signer,
+        )
+        .map_err(|e| GroupError::CreateProposalError(e.to_string()))?;
+
+    let serialized_message = message
+        .tls_serialize_detached()
+        .map_err(|e| GroupError::SerializeMessageError(e.to_string()))?;
+
+    Ok(serialized_message)
+}
+
+/// Creates proposals to add multiple members to an MLS group
+/// 
+/// # Arguments
+/// 
+/// * `nostr_mls` - The NostrMls instance containing MLS configuration and provider
+/// * `mls_group_id` - The ID of the MLS group as a byte vector
+/// * `key_packages` - A slice of KeyPackages for the members to be added
+/// 
+/// # Returns
+/// 
+/// A vector of serialized proposal messages as byte vectors on success, or a GroupError on failure.
+pub fn propose_add_members(
+    nostr_mls: &NostrMls,
+    mls_group_id: Vec<u8>,
+    key_packages: &[KeyPackage],
+) -> Result<Vec<Vec<u8>>, GroupError> {
+    let mut group = MlsGroup::load(
+        nostr_mls.provider.storage(),
+        &GroupId::from_slice(&mls_group_id),
+    )
+    .map_err(|e| GroupError::LoadGroupError(e.to_string()))?
+    .ok_or_else(|| GroupError::LoadGroupError("Group not found".to_string()))?;
+
+    let signer = SignatureKeyPair::read(
+        nostr_mls.provider.storage(),
+        group.own_leaf().unwrap().signature_key().clone().as_slice(),
+        group.ciphersuite().signature_algorithm(),
+    )
+    .ok_or_else(|| GroupError::LoadGroupError("Failed to load signer".to_string()))?;
+
+    // Create a proposal for each member to be added
+    let mut serialized_proposals = Vec::new();
+    for key_package in key_packages {
+        let (message, _proposal_ref) = group
+            .propose_add_member(&nostr_mls.provider, &signer, key_package)
+            .map_err(|e| GroupError::CreateProposalError(e.to_string()))?;
+
+        let serialized_message = message
+            .tls_serialize_detached()
+            .map_err(|e| GroupError::SerializeMessageError(e.to_string()))?;
+
+        serialized_proposals.push(serialized_message);
+    }
+
+    Ok(serialized_proposals)
+}
+
+/// Creates proposals to remove multiple members from an MLS group
+/// 
+/// # Arguments
+/// 
+/// * `nostr_mls` - The NostrMls instance containing MLS configuration and provider
+/// * `mls_group_id` - The ID of the MLS group as a byte vector
+/// * `member_indices` - A slice of indices for the members to be removed
+/// 
+/// # Returns
+/// 
+/// A vector of serialized proposal messages as byte vectors on success, or a GroupError on failure.
+pub fn propose_remove_members(
+    nostr_mls: &NostrMls,
+    mls_group_id: Vec<u8>,
+    member_indices: &[u32],
+) -> Result<Vec<Vec<u8>>, GroupError> {
+    let mut group = MlsGroup::load(
+        nostr_mls.provider.storage(),
+        &GroupId::from_slice(&mls_group_id),
+    )
+    .map_err(|e| GroupError::LoadGroupError(e.to_string()))?
+    .ok_or_else(|| GroupError::LoadGroupError("Group not found".to_string()))?;
+
+    let signer = SignatureKeyPair::read(
+        nostr_mls.provider.storage(),
+        group.own_leaf().unwrap().signature_key().clone().as_slice(),
+        group.ciphersuite().signature_algorithm(),
+    )
+    .ok_or_else(|| GroupError::LoadGroupError("Failed to load signer".to_string()))?;
+
+    // Convert indices to LeafNodeIndex
+    let leaf_indices: Vec<LeafNodeIndex> = member_indices
+        .iter()
+        .map(|&idx| LeafNodeIndex::new(idx))
+        .collect();
+
+    // Create a proposal for each member to be removed
+    let mut serialized_proposals = Vec::new();
+    for leaf_index in leaf_indices {
+        let (message, _proposal_ref) = group
+            .propose_remove_member(&nostr_mls.provider, &signer, leaf_index)
+            .map_err(|e| GroupError::CreateProposalError(e.to_string()))?;
+
+        let serialized_message = message
+            .tls_serialize_detached()
+            .map_err(|e| GroupError::SerializeMessageError(e.to_string()))?;
+
+        serialized_proposals.push(serialized_message);
+    }
+
+    Ok(serialized_proposals)
+}
+
+/// Creates a proposal for the current member to leave the MLS group
+/// 
+/// # Arguments
+/// 
+/// * `nostr_mls` - The NostrMls instance containing MLS configuration and provider
+/// * `mls_group_id` - The ID of the MLS group as a byte vector
+/// 
+/// # Returns
+/// 
+/// A serialized proposal message as a byte vector on success, or a GroupError on failure.
+pub fn propose_leave_group(
+    nostr_mls: &NostrMls,
+    mls_group_id: Vec<u8>,
+) -> Result<Vec<u8>, GroupError> {
+    let mut group = MlsGroup::load(
+        nostr_mls.provider.storage(),
+        &GroupId::from_slice(&mls_group_id),
+    )
+    .map_err(|e| GroupError::LoadGroupError(e.to_string()))?
+    .ok_or_else(|| GroupError::LoadGroupError("Group not found".to_string()))?;
+
+    let signer = SignatureKeyPair::read(
+        nostr_mls.provider.storage(),
+        group.own_leaf().unwrap().signature_key().clone().as_slice(),
+        group.ciphersuite().signature_algorithm(),
+    )
+    .ok_or_else(|| GroupError::LoadGroupError("Failed to load signer".to_string()))?;
+
+    // Get own leaf index
+    let own_index = group.own_leaf_index();
+
+    // Create a proposal to remove self
+    let (message, _proposal_ref) = group
+        .propose_remove_member(&nostr_mls.provider, &signer, own_index)
+        .map_err(|e| GroupError::CreateProposalError(e.to_string()))?;
+
+    let serialized_message = message
+        .tls_serialize_detached()
+        .map_err(|e| GroupError::SerializeMessageError(e.to_string()))?;
+
+    Ok(serialized_message)
+}
+
+/// Sends a commit to apply pending proposals in an MLS group
+/// 
+/// # Arguments
+/// 
+/// * `nostr_mls` - The NostrMls instance containing MLS configuration and provider
+/// * `mls_group_id` - The ID of the MLS group as a byte vector
+/// 
+/// # Returns
+/// 
+/// A serialized commit message as a byte vector on success, or a GroupError on failure.
+/// 
+/// # Errors
+/// 
+/// Returns a GroupError if:
+/// - The group cannot be loaded from storage
+/// - The signing keys cannot be loaded
+/// - Commit creation fails
+/// - Merging the pending commit fails
+/// - Message serialization fails
+pub fn send_commit(
+    nostr_mls: &NostrMls,
+    mls_group_id: Vec<u8>,
+) -> Result<Vec<u8>, GroupError> {
+    let mut group = MlsGroup::load(
+        nostr_mls.provider.storage(),
+        &GroupId::from_slice(&mls_group_id),
+    )
+    .map_err(|e| GroupError::LoadGroupError(e.to_string()))?
+    .ok_or_else(|| GroupError::LoadGroupError("Group not found".to_string()))?;
+
+    let signer = SignatureKeyPair::read(
+        nostr_mls.provider.storage(),
+        group.own_leaf().unwrap().signature_key().clone().as_slice(),
+        group.ciphersuite().signature_algorithm(),
+    )
+    .ok_or_else(|| GroupError::LoadGroupError("Failed to load signer".to_string()))?;
+
+    let (commit_message, _welcome_option, _group_info) = group
+        .commit_to_pending_proposals(&nostr_mls.provider, &signer)
+        .map_err(|e| GroupError::SendCommitError(e.to_string()))?;
+
+    // Merge the pending commit
+    group
+        .merge_pending_commit(&nostr_mls.provider)
+        .map_err(|e| GroupError::SendCommitError(e.to_string()))?;
+
+    let serialized_message = commit_message
+        .tls_serialize_detached()
+        .map_err(|e| GroupError::SerializeMessageError(e.to_string()))?;
+
+    Ok(serialized_message)
+}
