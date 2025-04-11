@@ -273,6 +273,101 @@ impl NostrMls {
         groups::member_pubkeys(self, mls_group_id)
     }
 
+    /// Proposes an update to the group information.
+    ///
+    /// This is a convenience wrapper around [`groups::propose_update_group_info`].
+    ///
+    /// # Arguments
+    ///
+    /// * `mls_group_id` - The ID of the MLS group as a byte vector
+    /// * `name` - The new name for the group
+    /// * `description` - The new description for the group
+    /// * `admin_pubkeys_hex` - A vector of hex-encoded Nostr public keys for group administrators
+    /// * `group_relays` - A vector of relay URLs where group messages will be published
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the serialized proposal message if successful,
+    /// or a GroupError if the proposal creation fails
+    pub fn propose_update_group_info(
+        &self,
+        mls_group_id: Vec<u8>,
+        name: String,
+        description: String,
+        admin_pubkeys_hex: Vec<String>,
+        group_relays: Vec<String>,
+    ) -> Result<Vec<u8>, groups::GroupError> {
+        groups::propose_update_group_info(
+            self,
+            mls_group_id,
+            name,
+            description,
+            admin_pubkeys_hex,
+            group_relays,
+        )
+    }
+
+    /// Proposes adding new members to the group.
+    ///
+    /// This is a convenience wrapper around [`groups::propose_add_members`].
+    ///
+    /// # Arguments
+    ///
+    /// * `mls_group_id` - The ID of the MLS group as a byte vector
+    /// * `key_packages` - A slice of KeyPackages for the members to be added
+    ///
+    /// # Returns
+    ///
+    /// A Result containing a vector of serialized proposal messages if successful,
+    /// or a GroupError if the proposal creation fails
+    pub fn propose_add_members(
+        &self,
+        mls_group_id: Vec<u8>,
+        key_packages: &[KeyPackage],
+    ) -> Result<Vec<Vec<u8>>, groups::GroupError> {
+        groups::propose_add_members(self, mls_group_id, key_packages)
+    }
+
+    /// Proposes removing members from the group.
+    ///
+    /// This is a convenience wrapper around [`groups::propose_remove_members`].
+    ///
+    /// # Arguments
+    ///
+    /// * `mls_group_id` - The ID of the MLS group as a byte vector
+    /// * `member_indices` - A slice of indices identifying the members to be removed
+    ///
+    /// # Returns
+    ///
+    /// A Result containing a vector of serialized proposal messages if successful,
+    /// or a GroupError if the proposal creation fails
+    pub fn propose_remove_members(
+        &self,
+        mls_group_id: Vec<u8>,
+        member_indices: &[u32],
+    ) -> Result<Vec<Vec<u8>>, groups::GroupError> {
+        groups::propose_remove_members(self, mls_group_id, member_indices)
+    }
+
+    /// Commits pending proposals in the group.
+    ///
+    /// This is a convenience wrapper around [`groups::send_commit`].
+    ///
+    /// # Arguments
+    ///
+    /// * `mls_group_id` - The ID of the MLS group as a byte vector
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the serialized commit message if successful,
+    /// or a GroupError if the commit operation fails
+    pub fn send_commit(
+        &self,
+        mls_group_id: Vec<u8>,
+    ) -> Result<Vec<u8>, groups::GroupError> {
+        groups::send_commit(self, mls_group_id)
+    }
+
     /// Performs a self-update operation for a group member.
     ///
     /// This is a convenience wrapper around [`groups::self_update`].

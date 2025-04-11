@@ -161,5 +161,74 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tracing::info!("Interior message event: {:#?}", json_event);
 
+    // ================================
+    // Testing Group Management Features
+    // ================================
+    
+    // 1. Generate a key package for new member Charlie
+    let charlie_keys = Keys::generate();
+    let charlie_encoded_key_package = nostr_openmls::key_packages::create_key_package_for_event(
+        charlie_keys.public_key().to_hex(),
+        &nostr_mls
+    )?;
+    let charlie_key_package = nostr_openmls::key_packages::parse_key_package(
+        charlie_encoded_key_package,
+        &nostr_mls
+    )?;
+
+    // 2. Test adding new member Charlie
+    let add_proposals = nostr_mls.propose_add_members(
+        bob_mls_group.group_id().to_vec(),
+        &[charlie_key_package]
+    )?;
+    assert_eq!(add_proposals.len(), 1, "Should have one add proposal");
+
+    // 3. Test updating group information
+    let update_proposal = nostr_mls.propose_update_group_info(
+        bob_mls_group.group_id().to_vec(),
+        "Bob, Alice & Charlie".to_string(),
+        "A secret chat between Bob, Alice and Charlie".to_string(),
+        vec![
+            alice_keys.public_key().to_hex(),
+            bob_keys.public_key().to_hex(),
+            charlie_keys.public_key().to_hex()
+        ],
+        vec!["ws://localhost:8080".to_string(), "ws://localhost:8081".to_string()]
+    )?;
+
+    // 4. Commit all proposals
+    let commit_message = nostr_mls.send_commit(bob_mls_group.group_id().to_vec())?;
+
+    // 5. Process proposals and commit message
+    for proposal in add_proposals {
+        nostr_mls.process_message_for_group(bob_mls_group.group_id().to_vec(), proposal)?;
+    }
+    nostr_mls.process_message_for_group(bob_mls_group.group_id().to_vec(), update_proposal)?;
+    nostr_mls.process_message_for_group(bob_mls_group.group_id().to_vec(), commit_message)?;
+
+    // 6. Verify member count
+    let member_pubkeys = nostr_mls.member_pubkeys(bob_mls_group.group_id().to_vec())?;
+    assert_eq!(member_pubkeys.len(), 3, "Group should now have 3 members");
+    assert!(member_pubkeys.contains(&charlie_keys.public_key().to_hex()), "Charlie should be in the group");
+
+    // 7. Test removing member (remove Charlie)
+    let remove_proposals = nostr_mls.propose_remove_members(
+        bob_mls_group.group_id().to_vec(),
+        &[2] // Charlie should be at index 2 (as the last member added)
+    )?;
+    assert_eq!(remove_proposals.len(), 1, "Should have one remove proposal");
+
+    // 8. Commit removal proposal
+    for proposal in remove_proposals {
+        nostr_mls.process_message_for_group(bob_mls_group.group_id().to_vec(), proposal)?;
+    }
+    let commit_message = nostr_mls.send_commit(bob_mls_group.group_id().to_vec())?;
+    nostr_mls.process_message_for_group(bob_mls_group.group_id().to_vec(), commit_message)?;
+
+    // 9. Verify member count after removal
+    let member_pubkeys = nostr_mls.member_pubkeys(bob_mls_group.group_id().to_vec())?;
+    assert_eq!(member_pubkeys.len(), 2, "Group should be back to 2 members");
+    assert!(!member_pubkeys.contains(&charlie_keys.public_key().to_hex()), "Charlie should not be in the group");
+
     Ok(())
 }
