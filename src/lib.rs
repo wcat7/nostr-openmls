@@ -307,67 +307,6 @@ impl NostrMls {
         )
     }
 
-    /// Proposes adding new members to the group.
-    ///
-    /// This is a convenience wrapper around [`groups::propose_add_members`].
-    ///
-    /// # Arguments
-    ///
-    /// * `mls_group_id` - The ID of the MLS group as a byte vector
-    /// * `key_packages` - A slice of KeyPackages for the members to be added
-    ///
-    /// # Returns
-    ///
-    /// A Result containing a vector of serialized proposal messages if successful,
-    /// or a GroupError if the proposal creation fails
-    pub fn propose_add_members(
-        &self,
-        mls_group_id: Vec<u8>,
-        key_packages: &[KeyPackage],
-    ) -> Result<Vec<Vec<u8>>, groups::GroupError> {
-        groups::propose_add_members(self, mls_group_id, key_packages)
-    }
-
-    /// Proposes removing members from the group.
-    ///
-    /// This is a convenience wrapper around [`groups::propose_remove_members`].
-    ///
-    /// # Arguments
-    ///
-    /// * `mls_group_id` - The ID of the MLS group as a byte vector
-    /// * `member_indices` - A slice of indices identifying the members to be removed
-    ///
-    /// # Returns
-    ///
-    /// A Result containing a vector of serialized proposal messages if successful,
-    /// or a GroupError if the proposal creation fails
-    pub fn propose_remove_members(
-        &self,
-        mls_group_id: Vec<u8>,
-        member_indices: &[u32],
-    ) -> Result<Vec<Vec<u8>>, groups::GroupError> {
-        groups::propose_remove_members(self, mls_group_id, member_indices)
-    }
-
-    /// Commits pending proposals in the group.
-    ///
-    /// This is a convenience wrapper around [`groups::send_commit`].
-    ///
-    /// # Arguments
-    ///
-    /// * `mls_group_id` - The ID of the MLS group as a byte vector
-    ///
-    /// # Returns
-    ///
-    /// A Result containing the serialized commit message if successful,
-    /// or a GroupError if the commit operation fails
-    pub fn send_commit(
-        &self,
-        mls_group_id: Vec<u8>,
-    ) -> Result<Vec<u8>, groups::GroupError> {
-        groups::send_commit(self, mls_group_id)
-    }
-
     /// Performs a self-update operation for a group member.
     ///
     /// This is a convenience wrapper around [`groups::self_update`].
@@ -394,6 +333,61 @@ impl NostrMls {
         mls_group_id: Vec<u8>,
     ) -> Result<groups::SelfUpdateResult, groups::GroupError> {
         groups::self_update(self, mls_group_id)
+    }
+
+    /// Adds members to the group
+    ///
+    /// # Arguments
+    ///
+    /// * `mls_group_id` - The ID of the MLS group as a byte vector
+    /// * `key_packages` - A slice of KeyPackages for the members to be added
+    ///
+    /// # Returns
+    ///
+    /// A Result containing a tuple of serialized commit and welcome messages if successful,
+    /// or a GroupError if the operation fails
+    pub fn add_members(
+        &self,
+        mls_group_id: Vec<u8>,
+        key_packages: &[KeyPackage],
+    ) -> Result<(Vec<u8>, Vec<u8>), groups::GroupError> {
+        groups::add_members(self, mls_group_id, key_packages)
+    }
+
+    /// Removes members from the group
+    ///
+    /// # Arguments
+    ///
+    /// * `mls_group_id` - The ID of the MLS group as a byte vector
+    /// * `member_indices` - A slice of indices for the members to be removed
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the serialized commit message if successful,
+    /// or a GroupError if the operation fails
+    pub fn remove_members(
+        &self,
+        mls_group_id: Vec<u8>,
+        member_indices: &[u32],
+    ) -> Result<Vec<u8>, groups::GroupError> {
+        groups::remove_members(self, mls_group_id, member_indices)
+    }
+
+    /// Leaves the group
+    ///
+    /// # Arguments
+    ///
+    /// * `mls_group_id` - The ID of the MLS group as a byte vector
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the serialized commit message if successful,
+    /// or a GroupError if the operation fails
+    pub fn leave_group(
+        &self,
+        mls_group_id: Vec<u8>,
+    ) -> Result<Vec<u8>, groups::GroupError> {
+        groups::leave_group(self, mls_group_id)
     }
 
     // ==================================
