@@ -329,18 +329,22 @@ pub fn process_message_for_group(
                 ProcessedMessageContent::ProposalMessage(staged_proposal) => {
                     // This is a proposal message
                     tracing::debug!(target: "nostr_openmls::groups::process_message_for_group", "Received proposal message: {:?}", staged_proposal);
-                    // TODO: Handle proposal message
+                    
                     Ok(vec![])
                 }
                 ProcessedMessageContent::StagedCommitMessage(staged_commit) => {
                     // This is a commit message
                     tracing::debug!(target: "nostr_openmls::groups::process_message_for_group", "Received commit message: {:?}", staged_commit);
-                    // TODO: Handle commit message
+                    
+                    // Merge the commit into the group state
+                    group.merge_staged_commit(&nostr_mls.provider, *staged_commit)
+                        .map_err(|e| GroupError::ProcessMessageError(format!("Failed to merge commit: {}", e)))?;
+
                     Ok(vec![])
                 }
                 ProcessedMessageContent::ExternalJoinProposalMessage(external_join_proposal) => {
                     tracing::debug!(target: "nostr_openmls::groups::process_message_for_group", "Received external join proposal message: {:?}", external_join_proposal);
-                    // TODO: Handle external join proposal
+                    
                     Ok(vec![])
                 }
             }
@@ -704,23 +708,15 @@ pub fn leave_group(
     )
     .ok_or_else(|| GroupError::LoadGroupError("Failed to load signer".to_string()))?;
 
-    // Get own leaf index
-    let own_index = group.own_leaf_index();
-
-    // Remove self directly
-    let (commit_message, _welcome_option, _group_info) = group
-        .remove_members(&nostr_mls.provider, &signer, &[own_index])
+    // Leave the group using leave_group method
+    let leave_message = group
+        .leave_group(&nostr_mls.provider, &signer)
         .map_err(|e| GroupError::CreateMessageError(e.to_string()))?;
 
-    // Merge the pending commit
-    group
-        .merge_pending_commit(&nostr_mls.provider)
-        .map_err(|e| GroupError::SendCommitError(e.to_string()))?;
-
-    // Serialize the commit message
-    let serialized_commit = commit_message
+    // Serialize the leave message
+    let serialized_leave = leave_message
         .tls_serialize_detached()
         .map_err(|e| GroupError::SerializeMessageError(e.to_string()))?;
 
-    Ok(serialized_commit)
+    Ok(serialized_leave)
 }
