@@ -301,7 +301,6 @@ pub fn process_message_for_group(
     let mls_message = MlsMessageIn::tls_deserialize_exact(message.as_slice())
         .map_err(|e| GroupError::ProcessMessageError(e.to_string()))?;
 
-    tracing::debug!(target: "nostr_openmls::groups::process_message_for_group", "Received message: {:?}", mls_message);
     let protocol_message = mls_message
         .try_into_protocol_message()
         .map_err(|e| GroupError::ProcessMessageError(e.to_string()))?;
@@ -315,11 +314,6 @@ pub fn process_message_for_group(
                 .process_message(&nostr_mls.provider, protocol_message)
                 .map_err(|e| GroupError::ProcessMessageError(e.to_string()))?;
 
-            tracing::debug!(
-                target: "nostr_openmls::groups::process_message_for_group",
-                "Processed message: {:?}",
-                processed_message
-            );
             // Handle the processed message based on its type
             match processed_message.into_content() {
                 ProcessedMessageContent::ApplicationMessage(application_message) => {
@@ -512,7 +506,7 @@ pub fn self_update(
     })
 }
 
-/// Creates a proposal to update group extensions
+/// Updates group extensions directly
 /// 
 /// # Arguments
 /// 
@@ -525,8 +519,8 @@ pub fn self_update(
 /// 
 /// # Returns
 /// 
-/// A serialized proposal message as a byte vector on success, or a GroupError on failure.
-pub fn propose_update_group_info(
+/// A serialized commit message as a byte vector on success, or a GroupError on failure.
+pub fn update_group_info(
     nostr_mls: &NostrMls,
     mls_group_id: Vec<u8>,
     name: String,
@@ -559,13 +553,18 @@ pub fn propose_update_group_info(
         UnknownExtension(serialized_group_data),
     )];
 
-    let (message, _proposal_ref) = group
-        .propose_group_context_extensions(
+    let (message, _welcome, _group_info) = group
+        .update_group_context_extensions(
             &nostr_mls.provider,
             Extensions::from_vec(extensions).expect("Failed to create extensions"),
             &signer,
         )
-        .map_err(|e| GroupError::CreateProposalError(e.to_string()))?;
+        .map_err(|e| GroupError::CreateMessageError(e.to_string()))?;
+
+    // Merge the pending commit
+    group
+        .merge_pending_commit(&nostr_mls.provider)
+        .map_err(|e| GroupError::SendCommitError(e.to_string()))?;
 
     let serialized_message = message
         .tls_serialize_detached()

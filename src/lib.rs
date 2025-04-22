@@ -275,7 +275,7 @@ impl NostrMls {
 
     /// Proposes an update to the group information.
     ///
-    /// This is a convenience wrapper around [`groups::propose_update_group_info`].
+    /// This is a convenience wrapper around [`groups::update_group_info`].
     ///
     /// # Arguments
     ///
@@ -289,7 +289,7 @@ impl NostrMls {
     ///
     /// A Result containing the serialized proposal message if successful,
     /// or a GroupError if the proposal creation fails
-    pub fn propose_update_group_info(
+    pub fn update_group_info(
         &self,
         mls_group_id: Vec<u8>,
         name: String,
@@ -297,7 +297,7 @@ impl NostrMls {
         admin_pubkeys_hex: Vec<String>,
         group_relays: Vec<String>,
     ) -> Result<Vec<u8>, groups::GroupError> {
-        groups::propose_update_group_info(
+        groups::update_group_info(
             self,
             mls_group_id,
             name,
