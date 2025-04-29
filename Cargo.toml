@@ -13,11 +13,11 @@ keywords = ["openmls", "nostr", "mls"]
 exclude = [".github/", "tests/", "Cargo.lock", ".gitignore"]
 
 [dependencies]
+openmls_memory_storage = { path = "./memory_storage", features = ["base64"] }
 openmls = { version = "0.6", git = "https://github.com/openmls/openmls", rev = "e2fc5e1" }
 openmls_basic_credential = { version = "0.3", git = "https://github.com/openmls/openmls", rev = "e2fc5e1" }
 openmls_rust_crypto = { version = "0.3", git = "https://github.com/openmls/openmls", rev = "e2fc5e1" }
 openmls_traits = { version = "0.3", git = "https://github.com/openmls/openmls", rev = "e2fc5e1" }
-openmls-sled-storage = { version = "0.1.0", git = "https://github.com/erskingardner/openmls-sled-storage", branch = "master" }
 serde = { version = "1", features = ["derive"] }
 bincode = "1.3"
 tls_codec = "0.4"

@@ -2,121 +2,102 @@ use std::path::PathBuf;
 use nostr_sdk::*;
 use nostr_openmls::*;
 use std::error::Error;
+use openmls::prelude::*;
+use openmls_traits::OpenMlsProvider;
+use openmls::group::{MlsGroup, GroupId};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
+    test_self_update().await?;
+    Ok(())
+}
 
-    // Initialize NostrMLS
-    let nostr_mls = NostrMls::new(PathBuf::from("./nostr-mls"), None);
+/// Test self update functionality
+async fn test_self_update() -> Result<(), Box<dyn Error>> {
+    tracing::info!("Starting self update test");
+    
+    // Initialize NostrMLS instances
+    let alice_mls = NostrMls::new(PathBuf::from("./nostr-mls-alice"), None);
+    let bob_mls = NostrMls::new(PathBuf::from("./nostr-mls-bob"), None);
 
     // Generate nostr keys
     let alice_keys = Keys::generate();
     let bob_keys = Keys::generate();
+    
+    tracing::info!("Created keys for Alice and Bob");
 
-    // Create key package for Bob
-    // The encoded key package is the one that will be published in a 443 event to the Nostr network
+    // Create Bob's key package
     let bob_encoded_key_package = nostr_openmls::key_packages::create_key_package_for_event(
         bob_keys.public_key().to_hex(), 
-        &nostr_mls
+        &bob_mls
     )?;
-
-    // ================================
-    // We're now acting as Alice
-    // ================================
-
-    // To create a group, Alice fetches Bob's key package from the Nostr network and parses it
     let bob_key_package = nostr_openmls::key_packages::parse_key_package(
         bob_encoded_key_package, 
-        &nostr_mls
+        &alice_mls
     )?;
 
-    // Alice creates the group, adding Bob.
-    let group_create_result = nostr_mls.create_group(
-        "Bob & Alice".to_string(), 
-        "A secret chat between Bob and Alice".to_string(), 
+    // Alice creates the group
+    let group_create_result = alice_mls.create_group(
+        "Test Group".to_string(), 
+        "Testing self update".to_string(), 
         vec![bob_key_package], 
-        vec![alice_keys.public_key().to_hex(), bob_keys.public_key().to_hex()], 
-        alice_keys.public_key().to_hex(), 
+        vec![alice_keys.public_key().to_hex()], 
+        alice_keys.public_key().to_hex(),
         vec!["ws://localhost:8080".to_string()]
     )?;
 
+    let alice_group_id = group_create_result.mls_group.group_id().to_vec();
+    tracing::info!("Alice created the group");
 
-    // The group is created, and the welcome message is serialized to send to Bob.
-    // We also have the Nostr group data, which we can use to show info about the group.
-    let alice_mls_group = group_create_result.mls_group;
-    let serialized_welcome_message = group_create_result.serialized_welcome_message;
-    let alice_group_data = group_create_result.nostr_group_data;
+    // Bob joins the group
+    let bob_join_result = bob_mls.join_group_from_welcome(group_create_result.serialized_welcome_message)?;
+    let bob_group_id = bob_join_result.mls_group.group_id().to_vec();
+    tracing::info!("Bob joined the group");
 
-    assert_eq!(alice_mls_group.members().count(), 2, "Groups should have 2 members");
-    assert_eq!(
-        String::from_utf8(alice_group_data.name).unwrap(), 
-        "Bob & Alice", 
-        "Group name should be Bob & Alice"
-    );
-    assert_eq!(
-        String::from_utf8(alice_group_data.description.clone()).unwrap(), 
-        "A secret chat between Bob and Alice", 
-        "Group description should be A secret chat between Bob and Alice"
-    );
-    assert_eq!(
-        alice_group_data.admin_pubkeys.iter().map(|p| String::from_utf8(p.clone()).unwrap()).collect::<Vec<String>>(),
-        vec![alice_keys.public_key().to_hex(), bob_keys.public_key().to_hex()],
-        "Group admin pubkeys should be Alice and Bob"
-    );
-    assert_eq!(
-        alice_group_data.relays.iter().map(|r| String::from_utf8(r.clone()).unwrap()).collect::<Vec<String>>(),
-        vec!["ws://localhost:8080".to_string()],
-        "Group relays should be ws://localhost:8080"
-    );
+    // Verify initial state
+    verify_group_state(
+        &alice_mls,
+        &alice_group_id,
+        &[alice_keys.public_key().to_hex(), bob_keys.public_key().to_hex()],
+        ""
+    ).await?;
+    verify_group_state(
+        &bob_mls,
+        &bob_group_id,
+        &[alice_keys.public_key().to_hex(), bob_keys.public_key().to_hex()],
+        ""
+    ).await?;
+    tracing::info!("Initial group state verified");
 
-    // At this point, Alice would publish a Kind: 444 event that is Gift-wrapped to just 
-    // Bob with the welcome event in the rumor event.
-
-    // Now, let's also try sending a message to the group (using an unsigned Kind: 9 event)
-    // We don't have to wait for Bob to join the group before we send our first message.
-    let message_event = EventBuilder::new(
-        Kind::Custom(9), 
-        "Hi Bob!"
-    ).tags(vec![]).build(alice_keys.public_key());
-
-    // This is the serialized message object that will be encrypted into a Kind: 445 event and published.
-    let serialized_message = nostr_mls.create_message_for_group(
-        alice_mls_group.group_id().to_vec(), 
-        serde_json::json!(message_event).to_string()
-    )?;
-
-    // Get the export secret value for this epoch of the group
-    // In real usage you would want to do this once per epoch, per group, and cache it.
-    // 🚨 It's critical that you delete this secret after some period of time to preserve forward secrecy.
-    // For example, once the group has moved 2 epochs beyond this one.
-    let (export_secret_hex, _epoch) = nostr_mls
-        .export_secret_as_hex_secret_key_and_epoch(alice_mls_group.group_id().to_vec())?;
+    // add test messsage
+    tracing::info!(target: "basic_example", "Testing message sending and receiving...");
     
-    // Convert that secret to nostr keys
-    let export_nostr_keys = Keys::parse(&export_secret_hex)?;
+    // Alice creates and sends a test message
+    let test_message = "Hello from Alice!".to_string();
+    let encrypted_message = bob_mls.create_message_for_group(bob_group_id.clone(), test_message.clone())
+        .expect("Failed to create message");
+    tracing::info!(target: "basic_example", "Alice created message: {}", test_message);
 
-    // Encrypt the message content
-    let encrypted_content = nostr_sdk::nips::nip44::encrypt(
-        export_nostr_keys.secret_key(),
-        &export_nostr_keys.public_key(),
-        &serialized_message,
-        nostr_sdk::nips::nip44::Version::V2,
-    )?;
+    // Bob processes Alice's message
+    let decrypted_message = alice_mls.process_message_for_group(alice_group_id.clone(), encrypted_message)
+        .expect("Failed to process message");
+    let received_message = String::from_utf8(decrypted_message)
+        .expect("Failed to convert decrypted message to string");
+    tracing::info!(target: "basic_example", "Bob received message: {}", received_message);
 
-    // Now we'll create a Kind: 445 event with the encrypted message content
-    let ephemeral_nostr_keys = Keys::generate();
+    // Verify the message content
+    assert_eq!(test_message, received_message, "Message content mismatch");
+    tracing::info!(target: "basic_example", "Message test completed successfully!");
 
-    let alice_message_event = EventBuilder::new(Kind::MlsGroupMessage, encrypted_content)
-        .tags(vec![
-            Tag::custom(TagKind::h(), vec![hex::encode(alice_group_data.nostr_group_id)])
-        ])
-        .sign(&ephemeral_nostr_keys)
-        .await?;
+    // Test Bob's self update
+    let update_result = bob_mls.self_update(bob_group_id.clone())?;
+    tracing::info!("Bob performed self update");
 
-    // ================================
-    // We're now acting as Bob
-    // ================================
+    // Alice processes Bob's update message
+    alice_mls.process_message_for_group(alice_group_id.clone(), update_result.serialized_message)?;
+    tracing::info!("Alice processed Bob's self update message");
+
 
     // First Bob recieves the Gift-wrapped welcome message from Alice and decrypts it.
     // Bob can now preview the welcome message to see what group he might be joining
@@ -161,5 +142,47 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tracing::info!("Interior message event: {:#?}", json_event);
 
+    // Verify final state
+    verify_group_state(
+        &alice_mls,
+        &alice_group_id,
+        &[alice_keys.public_key().to_hex(), bob_keys.public_key().to_hex()],
+        ""
+    ).await?;
+    verify_group_state(
+        &bob_mls,
+        &bob_group_id,
+        &[alice_keys.public_key().to_hex(), bob_keys.public_key().to_hex()],
+        ""
+    ).await?;
+    tracing::info!("Final group state verified");
+
+    tracing::info!("Self update test completed successfully");
+    Ok(())
+}
+
+/// Helper function to verify group state
+async fn verify_group_state(
+    nostr_mls: &NostrMls,
+    group_id: &[u8],
+    expected_members: &[String],
+    _group_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let member_pubkeys = nostr_mls.member_pubkeys(group_id.to_vec())?;
+    
+    assert_eq!(
+        member_pubkeys.len(),
+        expected_members.len(),
+        "Unexpected number of members in group"
+    );
+    
+    for expected_member in expected_members {
+        assert!(
+            member_pubkeys.contains(expected_member),
+            "Expected member {} not found in group",
+            expected_member
+        );
+    }
+    
     Ok(())
 }

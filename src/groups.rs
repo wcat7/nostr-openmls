@@ -162,6 +162,8 @@ pub fn create_mls_group(
     group
         .merge_pending_commit(&nostr_mls.provider)
         .map_err(|e| GroupError::CreateGroupError(e.to_string()))?;
+    
+    nostr_mls.provider.storage().save().map_err(|e| GroupError::CreateGroupError(e.to_string()))?;
 
     // Serialize the welcome message and send it to the members
     let serialized_welcome_message = welcome_out
@@ -446,35 +448,11 @@ pub fn self_update(
     )
     .unwrap();
 
-    let new_signature_keypair = SignatureKeyPair::new(nostr_mls.ciphersuite.signature_algorithm())
-        .map_err(|e| GroupError::SignatureKeypairError(e.to_string()))?;
-
-    new_signature_keypair
-        .store(nostr_mls.provider.storage())
-        .map_err(|e| GroupError::SignatureKeypairError(e.to_string()))?;
-
-    let pubkey = BasicCredential::try_from(group.own_leaf().unwrap().credential().clone())
-        .map_err(|e| GroupError::MemberIdentityError(e.to_string()))?
-        .identity()
-        .to_vec();
-
-    let new_credential: BasicCredential = BasicCredential::new(pubkey);
-    let new_credential_with_key = CredentialWithKey {
-        credential: new_credential.into(),
-        signature_key: new_signature_keypair.public().into(),
-    };
-
-    let leaf_node_params = LeafNodeParameters::builder()
-        .with_credential_with_key(new_credential_with_key)
-        .with_capabilities(group.own_leaf().unwrap().capabilities().clone())
-        .with_extensions(group.own_leaf().unwrap().extensions().clone())
-        .build();
-
     let (mls_message, _welcome, _group_info) = group
         .self_update(
             &nostr_mls.provider,
             &current_signature_keypair,
-            leaf_node_params,
+            LeafNodeParameters::default(),
         )
         .map_err(|e| GroupError::SelfUpdateError(e.to_string()))?;
 
@@ -482,6 +460,8 @@ pub fn self_update(
     group
         .merge_pending_commit(&nostr_mls.provider)
         .map_err(|e| GroupError::SelfUpdateError(e.to_string()))?;
+
+    nostr_mls.provider.storage().save().map_err(|e| GroupError::SelfUpdateError(e.to_string()))?;
 
     // Export the new epoch's exporter secret
     let (new_exporter_secret_hex, new_epoch) =
